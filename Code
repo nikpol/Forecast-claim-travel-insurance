@@ -1,0 +1,99 @@
+travel_data <- read.csv("C:/Users/nik/Documents/travel_insurance.csv", header = TRUE)
+
+dim(travel_data)
+names(travel_data)
+str(travel_data)
+
+travel_data$Agency <- as.factor(travel_data$Agency)
+travel_data$Agency.Type <- as.factor(travel_data$Agency.Type)
+travel_data$Distribution.Channel <- as.factor(travel_data$Distribution.Channel)
+travel_data$Product.Name <- as.factor(travel_data$Product.Name)
+travel_data$Claim <- as.factor(travel_data$Claim)
+travel_data$Destination <- as.factor(travel_data$Destination)
+
+summary(travel_data)
+
+#remove extreme and blank values
+library(dplyr)
+
+travel_data %>%
++ filter(grepl("-",Duration))
+travel_data1 <- travel_data %>%
++ filter(!grepl("-",Duration) & !grepl("118",Age))
+
+travel_data2 <- travel_data1 %>%
++ select(- Gender)
+
+#creating an even dataset
+
+library(ROSE)
+traveldata_undersample <- ovun.sample(Claim ~., data = travel_data2, method = "under", p = 0.5, seed = 1000)$data
+table(traveldata_undersample$Claim)
+
+#split into training and testing dataset
+
+library(caret)
+set.seed(1000)
+train_index <- createDataPartition(traveldata_undersample$Claim, times = 1, p = 0.7, list = FALSE)
+train_traveldata <- traveldata_undersample[train_index,]
+test_traveldata <- traveldata_undersample[-train_index,]
+table(train_traveldata$Claim)
+table(test_traveldata$Claim)
+
+#apply logistic regression
+
+glm.fits <- glm(Claim ~ Duration +Net.Sales+Commision..in.value.+Age, data = train_traveldata, family = binomial)
+summary(glm.fits)
+glm.probs <- predict(glm.fits, test_traveldata, type = "response")
+glm.pred <- rep("No",550)
+glm.pred[glm.probs > 0.5] <- "Yes"
+mean(glm.pred == test_traveldata$Claim)
+mean(glm.pred != test_traveldata$Claim)
+
+#if we keep only Duration and Net.Sales as the most important features
+
+glm.fits2 <- glm(Claim ~ Duration +Net.Sales, data = train_traveldata, family = bi-nomial)
+glm.probs2 <- predict(glm.fits2, test_traveldata, type = "response")
+glm.pred2 <- rep("No",550)
+glm.pred2[glm.probs2 > 0.5] <- "Yes"
+
+mean(glm.pred2 == test_traveldata$Claim)
+mean(glm.pred2 != test_traveldata$Claim)
+
+#apply decision tree
+
+library(tree)
+tree.travel <- tree(Claim ~ Duration +Net.Sales+Commision..in.value.+Age, data = travel_data2)
+plot(tree.travel)
+text(tree.travel,pretty = 0)
+
+#evaluate decision tree
+
+tree.travel <- tree(Claim ~ Duration +Net.Sales+Commision..in.value.+Age, data = train_traveldata)
+summary(tree.travel)
+plot(tree.travel)
+text(tree.travel,pretty = 0)
+tree.pred <- predict(tree.travel, test_traveldata, type = "class")
+table(tree.pred, test_traveldata$Claim)
+mean(tree.pred == test_traveldata$Claim)
+mean(tree.pred != test_traveldata$Claim)
+
+#check if pruning gets better results
+
+cv.travel <- cv.tree(tree.travel, FUN = prune.misclass)
+plot(cv.travel$size, cv.travel$dev, type = "b")
+prune.travel <- prune.misclass(tree.travel, best = 2)
+tree.pred2 <- predict(prune.travel, test_traveldata, type = "class")
+table(tree.pred2,test_traveldata$Claim)
+mean(tree.pred2 == test_traveldata$Claim)
+mean(tree.pred2 != test_traveldata$Claim)
+
+#clustering
+
+data <- travel_data2[,c(6,8,9,10)]
+km.out <- kmeans(data,2,nstart = 20)
+km.out
+km.out$tot.withinss
+km.out2 <- kmeans(data,2,nstart = 50)
+km.out2
+km.out2$tot.withinss
